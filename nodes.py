@@ -627,5 +627,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Save Image (WEBP)": "Save Image (WEBP)",
     "Load Images From Folder": "Load Images From Folder",
     "Wildcard Prompt": "Wildcard Prompt",
-    "AdvancedNoiseGenerator": "Advanced Noise Generator (Procedural)
+    "AdvancedNoiseGenerator": "Advanced Noise Generator (Procedural)"
 }
