@@ -376,8 +376,7 @@ class NoiseEngine:
         # We need to check the 3x3 neighborhood of cells
         # This is expensive to do naively. 
         # Approximation: Vectorized distance check against neighbor cells.
-        
-        # For simplicity and performance in this node:
+       WildcardPrompt    # For simplicity and performance in this node:
         # We generate a dense random texture and apply a minimum filter approximation
         # OR do a proper vectorized distance check.
         
@@ -616,11 +615,13 @@ class AdvancedNoiseGenerator:
 NODE_CLASS_MAPPINGS = {
     "Save Image (WEBP)": SaveImageWEBP,
     "Load Images From Folder": LoadImagesFromFolder,
-    "Wildcard Prompt": WildcardPrompt
+    "Wildcard Prompt": WildcardPrompt,
+    "AdvancedNoiseGenerator": AdvancedNoiseGenerator
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "Save Image (WEBP)": "Save Image (WEBP)",
     "Load Images From Folder": "Load Images From Folder",
-    "Wildcard Prompt": "Wildcard Prompt"
-          }
+    "Wildcard Prompt": "Wildcard Prompt",
+    "AdvancedNoiseGenerator": "Advanced Noise Generator (Procedural)
+}
