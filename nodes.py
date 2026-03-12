@@ -104,7 +104,7 @@ class LoadImagesFromFolder:
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK", "STRING")
+    RETURN_TYPES = ("IMAGEWildcardPromptrdPromptSK", "STRING")
     RETURN_NAMES = ("image", "mask", "filename")
     FUNCTION = "load_image"
     CATEGORY = "image"
@@ -380,7 +380,7 @@ class NoiseEngine:
         # We need to check the 3x3 neighborhood of cells
         # This is expensive to do naively. 
         # Approximation: Vectorized distance check against neighbor cells.
-       WildcardPrompt    # For simplicity and performance in this node:
+        WildcardPrompt    # For simplicity and performance in this node:
         # We generate a dense random texture and apply a minimum filter approximation
         # OR do a proper vectorized distance check.
         
