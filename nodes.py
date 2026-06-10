@@ -610,6 +610,105 @@ class AdvancedNoiseGenerator:
         # Move to CPU for ComfyUI internal handling
         return (noise.cpu(),)
 
+import os
+import subprocess
+import numpy as np
+import folder_paths
+
+class SaveAudioFFmpeg:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "audio": ("AUDIO", ),
+                "destination_folder": ("STRING", {"default": folder_paths.get_output_directory()}),
+                "filename_prefix": ("STRING", {"default": "ComfyUI_Audio"}),
+                "extension": (["mp3", "flac", "ogg"], {"default": "mp3"}),
+                "bitrate": ("STRING", {"default": "192k"}),
+            }
+        }
+
+    RETURN_TYPES = ()
+    FUNCTION = "save_audio"
+    OUTPUT_NODE = True
+    CATEGORY = "audio"
+
+    def save_audio(self, audio, destination_folder, filename_prefix, extension, bitrate):
+        os.makedirs(destination_folder, exist_ok=True)
+        
+        waveform = audio["waveform"]
+        sample_rate = audio["sample_rate"]
+        
+        results = []
+        # Process each item in the batch (usually just 1)
+        for i in range(waveform.shape[0]):
+            counter = 1
+            
+            # Find a unique filename to avoid overwriting
+            while True:
+                if waveform.shape[0] > 1:
+                    filename = f"{filename_prefix}_{i:02d}_{counter:05d}.{extension}"
+                else:
+                    filename = f"{filename_prefix}_{counter:05d}.{extension}"
+                
+                full_path = os.path.join(destination_folder, filename)
+                if not os.path.exists(full_path):
+                    break
+                counter += 1
+                
+            # Extract audio for this batch item
+            # ComfyUI shape: [channels, samples] -> FFmpeg expects interleaved: [samples, channels]
+            # Move to CPU, force float32, transpose, and make contiguous in memory
+            w = waveform[i].cpu().float().permute(1, 0).contiguous()            
+            # Convert directly to bytes (f32le = 32-bit float little-endian)
+            # This is extremely fast and avoids python loops
+            audio_bytes = w.numpy().tobytes()
+            channels = w.shape[1]
+            
+            # Build the FFmpeg command
+            cmd = [
+                "ffmpeg", "-y",
+                "-hide_banner", "-loglevel", "error",
+                "-f", "f32le",          # Raw float32 little-endian format
+                "-ar", str(sample_rate), # Sample rate
+                "-ac", str(channels),    # Channels
+                "-i", "pipe:0",          # Read directly from standard input (fastest method)
+            ]
+            
+            # FLAC is lossless and uses compression level instead of bitrate
+            if extension == "flac":
+                cmd.extend(["-compression_level", "5"])
+            else:
+                cmd.extend(["-b:a", bitrate])
+                
+            cmd.append(full_path)
+            
+            # Stream raw bytes directly to FFmpeg process
+            process = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE
+            )
+            
+            # Write bytes and close stdin to signal EOF to FFmpeg
+            process.stdin.write(audio_bytes)
+            process.stdin.close()
+            
+            # Wait for encoding to finish
+            _, stderr = process.communicate()
+            
+            if process.returncode != 0:
+                error_msg = stderr.decode('utf-8', errors='ignore')
+                print(f"FFmpeg error: {error_msg}")
+                raise RuntimeError(f"FFmpeg failed. Is FFmpeg installed and in your system PATH?")
+                
+            results.append({
+                "filename": full_path,
+                "type": "output"
+            })
+            
+        return {"ui": {"audio": results}}
 
 
 # ==============================================================================
@@ -620,12 +719,14 @@ NODE_CLASS_MAPPINGS = {
     "Save Image (WEBP)": SaveImageWEBP,
     "Load Images From Folder": LoadImagesFromFolder,
     "Wildcard Prompt": WildcardPrompt,
-    "AdvancedNoiseGenerator": AdvancedNoiseGenerator
+    "AdvancedNoiseGenerator": AdvancedNoiseGenerator,
+    "SaveAudioFFmpeg": SaveAudioFFmpeg
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "Save Image (WEBP)": "Save Image (WEBP)",
     "Load Images From Folder": "Load Images From Folder",
     "Wildcard Prompt": "Wildcard Prompt",
-    "AdvancedNoiseGenerator": "Advanced Noise Generator (Procedural)"
+    "AdvancedNoiseGenerator": "Advanced Noise Generator (Procedural)",
+    "SaveAudioFFmpeg": "Save Audio (FFmpeg)"
 }
