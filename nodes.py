@@ -628,6 +628,24 @@ class SaveAudioFFmpeg:
             }
         }
 
+import os
+import subprocess
+import numpy as np
+import folder_paths
+
+class SaveAudioFFmpeg:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "audio": ("AUDIO", ),
+                "destination_folder": ("STRING", {"default": folder_paths.get_output_directory()}),
+                "filename_prefix": ("STRING", {"default": "ComfyUI_Audio"}),
+                "extension": (["mp3", "flac", "ogg"], {"default": "mp3"}),
+                "bitrate": ("STRING", {"default": "192k"}),
+            }
+        }
+
     RETURN_TYPES = ()
     FUNCTION = "save_audio"
     OUTPUT_NODE = True
@@ -691,12 +709,8 @@ class SaveAudioFFmpeg:
                 stderr=subprocess.PIPE
             )
             
-            # Write bytes and close stdin to signal EOF to FFmpeg
-            process.stdin.write(audio_bytes)
-            process.stdin.close()
-            
-            # Wait for encoding to finish
-            _, stderr = process.communicate()
+            # FIX: Pass bytes directly to communicate to avoid manual stdin flush/close issues in Python 3.12
+            _, stderr = process.communicate(input=audio_bytes)
             
             if process.returncode != 0:
                 error_msg = stderr.decode('utf-8', errors='ignore')
@@ -711,9 +725,6 @@ class SaveAudioFFmpeg:
         return {"ui": {"audio": results}}
 
 
-# ==============================================================================
-# Node Mappings
-# ==============================================================================
 
 NODE_CLASS_MAPPINGS = {
     "Save Image (WEBP)": SaveImageWEBP,
