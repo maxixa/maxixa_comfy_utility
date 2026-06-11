@@ -724,6 +724,135 @@ class SaveAudioFFmpeg:
             
         return {"ui": {"audio": results}}
 
+import os
+import uuid
+import json
+import folder_paths
+import torchaudio
+import subprocess
+
+class SaveAudioNode:
+    def __init__(self):
+        self.output_dir = folder_paths.get_output_directory()
+        self.type = "output"
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "audio": ("AUDIO",),
+                "destination_folder": ("STRING", {"default": ""}),
+                "file_prefix": ("STRING", {"default": "ComfyUI"}),
+                "file_ext": (["mp3", "flac", "ogg", "wav"],),
+                "bitrate": ("STRING", {"default": "192k"}),
+            },
+            "hidden": {
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO"
+            },
+        }
+
+    RETURN_TYPES = ()
+    FUNCTION = "save_audio"
+    OUTPUT_NODE = True
+    CATEGORY = "audio"
+
+    def save_audio(self, audio, destination_folder, file_prefix, file_ext, bitrate, prompt=None, extra_pnginfo=None):
+        # 1. Extract audio data
+        waveform = audio["waveform"]
+        sample_rate = audio["sample_rate"]
+
+        # Handle batch dimension if present
+        if waveform.dim() == 3:
+            if waveform.shape[0] == 1:
+                waveform = waveform.squeeze(0)
+            else:
+                raise ValueError("Audio batch size > 1. Please save each batch separately.")
+
+        # 2. Resolve destination folder
+        if destination_folder and os.path.isabs(destination_folder):
+            out_dir = destination_folder
+        else:
+            if destination_folder:                out_dir = os.path.join(self.output_dir, destination_folder)
+            else:
+                out_dir = self.output_dir
+                
+        os.makedirs(out_dir, exist_ok=True)
+
+        # 3. Generate unique filename to prevent overwriting
+        counter = 1
+        filename = f"{file_prefix}_{counter:05d}.{file_ext}"
+        filepath = os.path.join(out_dir, filename)
+        while os.path.exists(filepath):
+            counter += 1
+            filename = f"{file_prefix}_{counter:05d}.{file_ext}"
+            filepath = os.path.join(out_dir, filename)
+
+        # 4. Parse compression settings for torchaudio
+        compression = None
+        if file_ext in ["mp3", "ogg"]:
+            try:
+                # Convert "192k" or "192kbps" to float 192.0
+                br_str = bitrate.lower().replace("kbps", "").replace("k", "").strip()
+                compression = float(br_str)
+            except:
+                compression = 192.0 # Default fallback
+        elif file_ext == "flac":
+            compression = 8 # FLAC compression level 0-8 (8 is highest/standard)
+
+        # 5. Save Audio
+        try:
+            # Primary attempt using torchaudio
+            torchaudio.save(
+                filepath,
+                waveform.cpu(),
+                sample_rate,
+                format=file_ext,
+                compression=compression
+            )
+        except Exception as e:
+            # Fallback: If torchaudio fails (e.g., mp3 backend missing), use system ffmpeg
+            print(f"Torchaudio save failed: {e}. Falling back to ffmpeg.")
+            
+            temp_wav_path = os.path.join(self.output_dir, f"temp_{uuid.uuid4().hex}.wav")
+            try:
+                # Save as temporary WAV
+                torchaudio.save(temp_wav_path, waveform.cpu(), sample_rate, format="wav")
+                
+                # Construct ffmpeg command
+                cmd = ["ffmpeg", "-y", "-i", temp_wav_path]
+                if file_ext in ["mp3", "ogg", "aac"]:
+                    cmd.extend(["-b:a", bitrate])                cmd.append(filepath)
+                
+                # Execute
+                subprocess.run(cmd, check=True, capture_output=True)
+            except subprocess.CalledProcessError as ffmpeg_err:
+                error_msg = ffmpeg_err.stderr.decode('utf-8') if isinstance(ffmpeg_err.stderr, bytes) else ffmpeg_err.stderr
+                print(f"FFmpeg Error: {error_msg}")
+                raise RuntimeError(f"FFmpeg fallback failed. Error: {error_msg}")
+            except Exception as e2:
+                print(f"FFmpeg not found or other error: {e2}")
+                raise RuntimeError(f"Both torchaudio and ffmpeg fallback failed. Error: {e2}")
+            finally:
+                if os.path.exists(temp_wav_path):
+                    os.remove(temp_wav_path)
+
+        # 6. Prepare UI response (allows preview in ComfyUI)
+        subfolder = os.path.relpath(out_dir, self.output_dir)
+        if subfolder == ".":
+            subfolder = ""
+
+        return {
+            "ui": {
+                "audio": [{
+                    "filename": filename,
+                    "subfolder": subfolder,
+                    "type": self.type
+                }]
+            }
+        }
+
+
 
 
 NODE_CLASS_MAPPINGS = {
@@ -731,7 +860,8 @@ NODE_CLASS_MAPPINGS = {
     "Load Images From Folder": LoadImagesFromFolder,
     "Wildcard Prompt": WildcardPrompt,
     "AdvancedNoiseGenerator": AdvancedNoiseGenerator,
-    "SaveAudioFFmpeg": SaveAudioFFmpeg
+    "SaveAudioFFmpeg": SaveAudioFFmpeg,
+    "SaveAudioNode": SaveAudioNode
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -739,5 +869,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Load Images From Folder": "Load Images From Folder",
     "Wildcard Prompt": "Wildcard Prompt",
     "AdvancedNoiseGenerator": "Advanced Noise Generator (Procedural)",
-    "SaveAudioFFmpeg": "Save Audio (FFmpeg)"
+    "SaveAudioFFmpeg": "Save Audio (FFmpeg)",
+    "SaveAudioNode": "Save Audio node"
 }
