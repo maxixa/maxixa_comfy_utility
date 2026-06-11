@@ -822,7 +822,8 @@ class SaveAudioNode:
                 # Construct ffmpeg command
                 cmd = ["ffmpeg", "-y", "-i", temp_wav_path]
                 if file_ext in ["mp3", "ogg", "aac"]:
-                    cmd.extend(["-b:a", bitrate])                cmd.append(filepath)
+                    cmd.extend(["-b:a", bitrate])                
+                    cmd.append(filepath)
                 
                 # Execute
                 subprocess.run(cmd, check=True, capture_output=True)
